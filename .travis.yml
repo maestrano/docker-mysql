@@ -69,7 +69,7 @@ script:
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - '[ "$count_node_1" == "$count_node_2" ] || exit 1'
-  - count_pre_insert=$count_node_1
+  - last_count=$count_node_1
 
   # Ensure that instance 2 -> instance 1 replication is up
   - sleep 60
@@ -80,9 +80,40 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - echo $count_node_1
-  - echo $count_node_2
-  - docker logs m1
-  - docker logs m2
+  - last_count=$count_node_1
   - '[ $count_node_1 -eq $count_node_2 ]'
-  - '[ $count_node_1 -gt $count_pre_insert ]'
+  - '[ $count_node_1 -gt $last_count ]'
+
+  # Stop/start replica - insert data at the same time
+  - docker stop m2
+  - for i in {20..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+  - docker start m2
+  - for i in {100..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+
+  # Wait for cluster instance 2 to be up
+  - for i in {30..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
+  - if [ "$i" = 0 ]; then echo 'MySQL startup process failed.'; exit 1; fi
+
+  # Ensure counts are equal
+  - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - last_count=$count_node_1
+  - '[ $count_node_1 -eq $count_node_2 ]'
+  - '[ $count_node_1 -gt $last_count ]'
+
+  # Destroy and recreate original master - insert data at the same time
+  - docker rm -f m1
+  - for i in {20..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+  - docker run -d -p $PORT_NODE_1:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e PEER_HOST=$HOST_PUB_IP -e PEER_PORT=$PORT_NODE_2 -e MYSQL_SERVER_ID=1 --name m1 maestrano/mysql:travis
+  - for i in {100..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+
+  # Wait for cluster instance 2 to be up
+  - for i in {30..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
+  - if [ "$i" = 0 ]; then echo 'MySQL startup process failed.'; exit 1; fi
+
+  # Ensure counts are equal
+  - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - last_count=$count_node_1
+  - '[ $count_node_1 -eq $count_node_2 ]'
+  - '[ $count_node_1 -gt $last_count ]'

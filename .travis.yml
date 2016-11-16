@@ -42,6 +42,7 @@ script:
   #=============================================
   # Test MySQL cluster - Master-Master
   #=============================================
+  # TODO: mount volumes
   # Start cluster instance 1
   - docker run -d -p $PORT_NODE_1:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e MYSQL_SERVER_ID=1 --name m1 maestrano/mysql:travis
 

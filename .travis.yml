@@ -77,5 +77,7 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - '[ "$count_node_1" == "$count_node_2" ] || exit 1'
-  - '[ $count_node_1 -gt $count_pre_insert ] || exit 1'
+  - echo $count_node_1
+  - echo $count_node_2
+  - [ "$count_node_1" == "$count_node_2" ]
+  - [ $count_node_1 -gt $count_pre_insert ]

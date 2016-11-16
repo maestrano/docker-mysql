@@ -79,5 +79,5 @@ script:
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - echo $count_node_1
   - echo $count_node_2
-  - [ "$count_node_1" == "$count_node_2" ]
-  - [ $count_node_1 -gt $count_pre_insert ]
+  - '[ $count_node_1 -eq $count_node_2 ]'
+  - '[ $count_node_1 -gt $count_pre_insert ]'

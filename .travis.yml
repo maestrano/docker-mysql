@@ -33,7 +33,7 @@ script:
   - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "create table app_db.dummy (id varchar(10));"
   - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "show tables in app_db;"
   - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))"
-  - record_count=$(mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -BNe "SELECT COUNT(*) FROM app_db.dummy")
+  - "record_count=$(mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - [ "$record_count" == "1" ] || exit 1
 
   # Destroy container
@@ -54,7 +54,7 @@ script:
   - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "create table app_db.dummy (id varchar(10));"
   - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "show tables in app_db;"
   - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))"
-  - record_count=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe "SELECT COUNT(*) FROM app_db.dummy")
+  - "record_count=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - [ "$record_count" == "1" ] || exit 1
 
   # Create replica and insert data on master in parallel
@@ -66,8 +66,8 @@ script:
   - if [ "$i" = 0 ]; then echo 'MySQL startup process failed.'; exit 1; fi
 
   # Ensure counts are equal
-  - count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe "SELECT COUNT(*) FROM app_db.dummy")
-  - count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe "SELECT COUNT(*) FROM app_db.dummy")
+  - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - [ "$count_node_1" == "$count_node_2" ] || exit 1
   - count_pre_insert=$count_node_1
 
@@ -75,7 +75,7 @@ script:
   - for i in {20..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
 
   # Ensure counts are equal
-  - count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe "SELECT COUNT(*) FROM app_db.dummy")
-  - count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe "SELECT COUNT(*) FROM app_db.dummy")
+  - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - [ "$count_node_1" == "$count_node_2" ] || exit 1
   - [ $count_node_1 -gt $count_pre_insert ] || exit 1

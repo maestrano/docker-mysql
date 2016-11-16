@@ -55,7 +55,7 @@ script:
   - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "show tables in app_db;"
   - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))"
   - "record_count=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - [ "$record_count" == "1" ] || exit 1
+  - '[ "$record_count" == "1" ] || exit 1'
 
   # Create replica and insert data on master in parallel
   - docker run -d -p $PORT_NODE_2:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_2 -e PEER_HOST=$HOST_PUB_IP -e PEER_PORT=$PORT_NODE_1 -e MASTER_MASTER_REP=true -e MYSQL_SERVER_ID=2 --name m2 maestrano/mysql:travis
@@ -68,7 +68,7 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - [ "$count_node_1" == "$count_node_2" ] || exit 1
+  - '[ "$count_node_1" == "$count_node_2" ] || exit 1'
   - count_pre_insert=$count_node_1
 
   # Insert data on instance 2
@@ -77,5 +77,5 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - [ "$count_node_1" == "$count_node_2" ] || exit 1
-  - [ $count_node_1 -gt $count_pre_insert ] || exit 1
+  - '[ "$count_node_1" == "$count_node_2" ] || exit 1'
+  - '[ $count_node_1 -gt $count_pre_insert ] || exit 1'

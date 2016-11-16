@@ -80,9 +80,9 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - last_count=$count_node_1
   - '[ $count_node_1 -eq $count_node_2 ]'
   - '[ $count_node_1 -gt $last_count ]'
+  - last_count=$count_node_1
 
   # Stop/start replica - insert data at the same time
   - docker stop m2
@@ -97,9 +97,9 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - last_count=$count_node_1
   - '[ $count_node_1 -eq $count_node_2 ]'
   - '[ $count_node_1 -gt $last_count ]'
+  - last_count=$count_node_1
 
   # Destroy and recreate original master - insert data at the same time
   - docker rm -f m1
@@ -114,6 +114,6 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - last_count=$count_node_1
   - '[ $count_node_1 -eq $count_node_2 ]'
   - '[ $count_node_1 -gt $last_count ]'
+  - last_count=$count_node_1

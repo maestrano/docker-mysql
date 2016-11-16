@@ -71,9 +71,11 @@ script:
   - '[ "$count_node_1" == "$count_node_2" ] || exit 1'
   - count_pre_insert=$count_node_1
 
+  # Ensure that instance 2 -> instance 1 replication is up
+  - sleep 60
+
   # Insert data on instance 2
   - for i in {20..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
-  - sleep 10
 
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"

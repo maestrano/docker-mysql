@@ -34,7 +34,7 @@ script:
   - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "show tables in app_db;"
   - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))"
   - "record_count=$(mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - [ "$record_count" == "1" ] || exit 1
+  - '[ "$record_count" == "1" ] || exit 1'
 
   # Destroy container
   - docker rm -f m0

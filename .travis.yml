@@ -13,17 +13,23 @@ script:
   - cd 5.7/
   - docker build -t maestrano/mysql:travis . > /dev/null 2>&1
 
+  # Create volumes
+  - mkdir -p vol-m0 vol-m1 vol-m2
+
   # Configuration
   - HOST_PUB_IP=$(ifconfig | grep "eth0 " -A 1 | grep "inet " | cut -d':' -f2 | cut -d' ' -f1)
   - PORT_NODE_0=33000
+  - VOL_NODE_0=$(pwd)/vol-m0
   - PORT_NODE_1=33001
+  - VOL_NODE_1=$(pwd)/vol-m1
   - PORT_NODE_2=33002
+  - VOL_NODE_2=$(pwd)/vol-m2
 
-  #=============================================
+  #============================================================================
   # Test standalone MySQL
-  #=============================================
+  #============================================================================
   # Start standalone instance
-  - docker run -d -p $PORT_NODE_0:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db --name m0 maestrano/mysql:travis
+  - docker run -d -p $PORT_NODE_0:3306 -v $VOL_NODE_0:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db --name m0 maestrano/mysql:travis
 
   # Wait for standalone instance to be up
   - for i in {30..0}; do mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
@@ -39,12 +45,22 @@ script:
   # Destroy container
   - docker rm -f m0
 
-  #=============================================
-  # Test MySQL cluster - Master-Master
-  #=============================================
+  #============================================================================
+  # Backward compatibility: Initialize m0 volume using official mysql image
+  #============================================================================
+  - docker run -d -p $PORT_NODE_1:3306 -v $VOL_NODE_1:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db --name m1 mysql:5.7
+  - for i in {30..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
+  - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "create table app_db.dummy_original (id varchar(10));"
+  - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy_original VALUES(RAND(1000))"
+  - docker stop m1
+  - docker rm -f m1
+
+  #============================================================================
+  # Test MySQL cluster: Master-Master setup
+  #============================================================================
   # TODO: mount volumes
   # Start cluster instance 1
-  - docker run -d -p $PORT_NODE_1:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e MYSQL_SERVER_ID=1 --name m1 maestrano/mysql:travis
+  - docker run -d -p $PORT_NODE_1:3306 -v $VOL_NODE_1:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e MYSQL_SERVER_ID=1 --name m1 maestrano/mysql:travis
 
   # Wait for cluster instance 1 to be up
   - for i in {30..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
@@ -58,7 +74,7 @@ script:
   - '[ "$record_count" == "1" ] || exit 1'
 
   # Create replica and insert data on master in parallel
-  - docker run -d -p $PORT_NODE_2:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_2 -e PEER_HOST=$HOST_PUB_IP -e PEER_PORT=$PORT_NODE_1 -e MASTER_MASTER_REP=true -e MYSQL_SERVER_ID=2 --name m2 maestrano/mysql:travis
+  - docker run -d -p $PORT_NODE_2:3306 -v $VOL_NODE_2:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_2 -e PEER_HOST=$HOST_PUB_IP -e PEER_PORT=$PORT_NODE_1 -e MASTER_MASTER_REP=true -e MYSQL_SERVER_ID=2 --name m2 maestrano/mysql:travis
   - for i in {1000..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
 
   # Wait for cluster instance 2 to be up
@@ -84,6 +100,14 @@ script:
   - '[ $count_node_1 -gt $last_count ]'
   - last_count=$count_node_1
 
+  # Ensure counts on dummy_original are equal
+  - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy_original')"
+  - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy_original')"
+  - '[ $count_node_1 -eq $count_node_2 ]'
+
+  #============================================================================
+  # Test MySQL cluster: Stop/Start second replica
+  #============================================================================
   # Stop/start replica - insert data at the same time
   - docker stop m2
   - for i in {20..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
@@ -101,10 +125,13 @@ script:
   - '[ $count_node_1 -gt $last_count ]'
   - last_count=$count_node_1
 
+  #============================================================================
+  # Test MySQL cluster: Destroy/Create initial master
+  #============================================================================
   # Destroy and recreate original master - insert data at the same time
   - docker rm -f m1
   - for i in {20..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
-  - docker run -d -p $PORT_NODE_1:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e PEER_HOST=$HOST_PUB_IP -e PEER_PORT=$PORT_NODE_2 -e MYSQL_SERVER_ID=1 --name m1 maestrano/mysql:travis
+  - docker run -d -p $PORT_NODE_1:3306 -v $VOL_NODE_1:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e PEER_HOST=$HOST_PUB_IP -e PEER_PORT=$PORT_NODE_2 -e MYSQL_SERVER_ID=1 --name m1 maestrano/mysql:travis
   - for i in {100..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
 
   # Wait for cluster instance 2 to be up

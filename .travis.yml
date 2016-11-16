@@ -26,7 +26,7 @@ script:
   - docker run -d -p $PORT_NODE_0:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db --name m0 maestrano/mysql:travis
 
   # Wait for standalone instance to be up
-  - for i in {30..0}; do if mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null; then break fi; sleep 1; done
+  - for i in {30..0}; do mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
   - if [ "$i" = 0 ]; then echo 'MySQL startup process failed.'; exit 1; fi
 
   # Create data

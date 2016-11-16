@@ -73,13 +73,14 @@ script:
 
   # Insert data on instance 2
   - for i in {20..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+  - sleep 5
 
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - echo $count_node_1
   - echo $count_node_2
-  - docker logs -f m1
-  - docker logs -f m2
+  - docker logs m1
+  - docker logs m2
   - '[ $count_node_1 -eq $count_node_2 ]'
   - '[ $count_node_1 -gt $count_pre_insert ]'

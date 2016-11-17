@@ -164,6 +164,9 @@ script:
   - for i in {30..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
   - if [ "$i" = 0 ]; then echo 'MySQL startup process failed.'; exit 1; fi
 
+  # Give some time to the circular replication to settle
+  - sleep 60
+
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"

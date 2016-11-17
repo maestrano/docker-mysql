@@ -91,7 +91,7 @@ script:
   - last_count=$count_node_1
 
   # Create replica 3 and insert data on master in parallel
-  - docker run -d -p $PORT_NODE_3:3306 -v $VOL_NODE_3:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_3 -e MYSQL_REP_PEERS=$HOST_PUB_IP:$PORT_NODE_1:1,$HOST_PUB_IP:$PORT_NODE_2:2,$HOST_PUB_IP:$PORT_NODE_3:3 --name m2 maestrano/mysql:travis
+  - docker run -d -p $PORT_NODE_3:3306 -v $VOL_NODE_3:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_3 -e MYSQL_REP_PEERS=$HOST_PUB_IP:$PORT_NODE_1:1,$HOST_PUB_IP:$PORT_NODE_2:2,$HOST_PUB_IP:$PORT_NODE_3:3 --name m3 maestrano/mysql:travis
   - for i in {1000..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
 
   # Wait for cluster instance 3 to be up

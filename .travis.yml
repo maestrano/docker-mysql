@@ -24,6 +24,9 @@ script:
   - VOL_NODE_1=$(pwd)/vol-m1
   - PORT_NODE_2=33002
   - VOL_NODE_2=$(pwd)/vol-m2
+  - PORT_NODE_3=33005
+  - VOL_NODE_3=$(pwd)/vol-m3
+  - CLUSTER_CONFIG=$HOST_PUB_IP:$PORT_NODE_1:1,$HOST_PUB_IP:$PORT_NODE_2:2
 
   #============================================================================
   # Test standalone MySQL
@@ -60,7 +63,7 @@ script:
   #============================================================================
   # TODO: mount volumes
   # Start cluster instance 1
-  - docker run -d -p $PORT_NODE_1:3306 -v $VOL_NODE_1:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e MYSQL_SERVER_ID=1 --name m1 maestrano/mysql:travis
+  - docker run -d -p $PORT_NODE_1:3306 -v $VOL_NODE_1:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e MYSQL_REP_PEERS=$HOST_PUB_IP:$PORT_NODE_1:1 --name m1 maestrano/mysql:travis
 
   # Wait for cluster instance 1 to be up
   - for i in {30..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
@@ -73,8 +76,8 @@ script:
   - "record_count=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - '[ "$record_count" == "1" ] || exit 1'
 
-  # Create replica and insert data on master in parallel
-  - docker run -d -p $PORT_NODE_2:3306 -v $VOL_NODE_2:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_2 -e PEER_HOST=$HOST_PUB_IP -e PEER_PORT=$PORT_NODE_1 -e MASTER_MASTER_REP=true -e MYSQL_SERVER_ID=2 --name m2 maestrano/mysql:travis
+  # Create replica 2 and insert data on master in parallel
+  - docker run -d -p $PORT_NODE_2:3306 -v $VOL_NODE_2:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_2 -e MYSQL_REP_PEERS=$HOST_PUB_IP:$PORT_NODE_1:1,$HOST_PUB_IP:$PORT_NODE_2:2 --name m2 maestrano/mysql:travis
   - for i in {1000..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
 
   # Wait for cluster instance 2 to be up
@@ -87,32 +90,53 @@ script:
   - '[ "$count_node_1" == "$count_node_2" ] || exit 1'
   - last_count=$count_node_1
 
-  # Ensure that instance 2 -> instance 1 replication is up
-  - sleep 60
+  # Create replica 3 and insert data on master in parallel
+  - docker run -d -p $PORT_NODE_3:3306 -v $VOL_NODE_3:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_3 -e MYSQL_REP_PEERS=$HOST_PUB_IP:$PORT_NODE_1:1,$HOST_PUB_IP:$PORT_NODE_2:2,$HOST_PUB_IP:$PORT_NODE_3:3 --name m2 maestrano/mysql:travis
+  - for i in {1000..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
 
-  # Insert data on instance 2
-  - for i in {20..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+  # Wait for cluster instance 3 to be up
+  - for i in {30..0}; do mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
+  - if [ "$i" = 0 ]; then echo 'MySQL startup process failed.'; exit 1; fi
 
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_3=$(mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - '[ "$count_node_1" == "$count_node_2" ] || exit 1'
+  - '[ "$count_node_1" == "$count_node_3" ] || exit 1'
+  - last_count=$count_node_1
+
+  # Give some time to the circular replication to settle
+  - sleep 60
+
+  # Insert data on instance 2 then instance 3
+  - for i in {20..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+  - for i in {20..0}; do mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+
+  # Ensure counts are equal
+  - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_3=$(mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - '[ $count_node_1 -eq $count_node_2 ]'
+  - '[ $count_node_1 -eq $count_node_3 ]'
   - '[ $count_node_1 -gt $last_count ]'
   - last_count=$count_node_1
 
   # Ensure counts on dummy_original are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy_original')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy_original')"
+  - "count_node_3=$(mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy_original')"
   - '[ $count_node_1 -eq $count_node_2 ]'
+  - '[ $count_node_1 -eq $count_node_3 ]'
 
   #============================================================================
   # Test MySQL cluster: Stop/Start second replica
   #============================================================================
   # Stop/start replica - insert data at the same time
   - docker stop m2
-  - for i in {20..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+  - for i in {20..0}; do mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
   - docker start m2
-  - for i in {100..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
+  - for i in {100..0}; do mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
 
   # Wait for cluster instance 2 to be up
   - for i in {30..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
@@ -121,7 +145,9 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_3=$(mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - '[ $count_node_1 -eq $count_node_2 ]'
+  - '[ $count_node_1 -eq $count_node_3 ]'
   - '[ $count_node_1 -gt $last_count ]'
   - last_count=$count_node_1
 
@@ -131,16 +157,18 @@ script:
   # Destroy and recreate original master - insert data at the same time
   - docker rm -f m1
   - for i in {20..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
-  - docker run -d -p $PORT_NODE_1:3306 -v $VOL_NODE_1:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e PEER_HOST=$HOST_PUB_IP -e PEER_PORT=$PORT_NODE_2 -e MYSQL_SERVER_ID=1 --name m1 maestrano/mysql:travis
+  - docker run -d -p $PORT_NODE_1:3306 -v $VOL_NODE_1:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e MYSQL_REP_PEERS=$HOST_PUB_IP:$PORT_NODE_1:1,$HOST_PUB_IP:$PORT_NODE_2:2,$HOST_PUB_IP:$PORT_NODE_3:3 --name m1 maestrano/mysql:travis
   - for i in {100..0}; do mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))" 2>/dev/null; done
 
-  # Wait for cluster instance 2 to be up
+  # Wait for cluster instance 1 to be up
   - for i in {30..0}; do mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e 'SELECT 1' &> /dev/null && break; sleep 1; done
   - if [ "$i" = 0 ]; then echo 'MySQL startup process failed.'; exit 1; fi
 
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
+  - "count_node_3=$(mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - '[ $count_node_1 -eq $count_node_2 ]'
+  - '[ $count_node_1 -eq $count_node_3 ]'
   - '[ $count_node_1 -gt $last_count ]'
   - last_count=$count_node_1

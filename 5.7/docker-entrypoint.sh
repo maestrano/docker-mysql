@@ -41,7 +41,7 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" -a "$(id -u)" = '0' ]; then
 	_check_config "$@"
 	DATADIR="$(_datadir "$@")"
 	mkdir -p "$DATADIR"
-  chown -R mysql:mysql /etc/mysql
+	chown -R mysql:mysql /etc/mysql
 	chown -R mysql:mysql "$DATADIR"
 	exec gosu mysql "$BASH_SOURCE" "$@"
 fi
@@ -149,31 +149,87 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 		echo
 	fi
 
-  # Master-Master replication
-  if [ -n "$MYSQL_SERVER_ID" ] && [ -n "$MYSQL_DATABASE" ]; then
-    # Configure cluster
-    cat <<-EOF > /etc/mysql/mysql.conf.d/cluster.cnf
+	#
+	# MySQL peer selection
+	#
+	# A value of:
+	# MYSQL_REP_PEERS = "10.1.1.2:18267:1,10.1.1.3:29167:1,10.0.1.2:19345:3"
+	#
+	# will lead to the following circular replication
+	# 10.1.1.2:18267 -> 10.1.1.3:29167 -> 10.0.1.2:19345 -> 10.1.1.2:18267 -> ...
+	#
+	if [ -n "$MYSQL_REP_PEERS" ]; then
+		# Transform comma separated list of peers into an array
+		arr_peers=(${MYSQL_REP_PEERS//,/ })
+		self_index=
+		master_index=
+		slave_index=
+
+		for i in "${!arr_peers[@]}"; do
+			epeer=${arr_peers[$i]}
+			peer=(${epeer//:/ })
+
+			if [ "${peer[0]}:${peer[1]}" == "$SELF_HOST:$SELF_PORT" ]; then
+				self_index=$i
+				break
+			fi
+		done
+
+		if [ -n "$self_index" ]; then
+			let "master_index = ($self_index - 1) % ${#arr_peers[@]}" || true # avoid exiting when result is 1 due to set -e
+			let "slave_index = ($self_index + 1) % ${#arr_peers[@]}" || true # avoid exiting when result is 1 due to set -e
+		fi
+
+		if [ -n "$self_index" ]; then
+			epeer=${arr_peers[$self_index]}
+			peer=(${epeer//:/ })
+			MYSQL_SERVER_ID=${peer[2]}
+			echo "Replication configuration for self: HOST=${SELF_HOST}, PORT=${SELF_PORT}, SERVER_ID=${MYSQL_SERVER_ID}"
+		fi
+
+		if [ -n "$master_index" ] && [ "$self_index" != "$master_index" ]; then
+			epeer=${arr_peers[$master_index]}
+			peer=(${epeer//:/ })
+			MASTER_HOST=${peer[0]}
+			MASTER_PORT=${peer[1]}
+			echo "Replication configuration for master: HOST=${MASTER_HOST}, PORT=${MASTER_PORT}, SERVER_ID=${peer[2]}"
+		fi
+
+		if [ -n "$slave_index" ] && [ "$self_index" != "$slave_index" ]; then
+			epeer=${arr_peers[$slave_index]}
+			peer=(${epeer//:/ })
+			SLAVE_HOST=${peer[0]}
+			SLAVE_PORT=${peer[1]}
+			echo "Replication configuration for slave: HOST=${SLAVE_HOST}, PORT=${SLAVE_PORT}, SERVER_ID=${peer[2]}"
+		fi
+	fi
+
+	# Configure replication
+	if [ -n "$MYSQL_SERVER_ID" ] && [ -n "$MYSQL_DATABASE" ]; then
+		# Configure cluster
+		cat <<-EOF > /etc/mysql/mysql.conf.d/cluster.cnf
 		[mysqld]
 		server-id							 = ${MYSQL_SERVER_ID}
 		log_bin								 = /var/log/mysql/mysql-bin.log
 		binlog_do_db						= ${MYSQL_DATABASE}
-    relay_log               = relay-log
-    relay_log_index        = relay-bin.index
+		relay_log							 = relay-log
+		relay_log_index				= relay-bin.index
+		log_slave_updates     = true
 		EOF
 
-    # Start mysql
-    "$@" --skip-networking --skip-slave-start &
-  	pid="$!"
+		# Start mysql
+		"$@" --skip-networking --skip-slave-start &
+		pid="$!"
 
-    # Helpers
-    function execsql() {
-      mysql -u root -p$MYSQL_ROOT_PASSWORD -e "$1"
-    }
-    function peer_execsql() {
-      mysql -P $PEER_PORT -h $PEER_HOST -u root -p$MYSQL_ROOT_PASSWORD -e "$1"
-    }
+		# Helpers
+		function execsql() {
+			mysql -u root -p$MYSQL_ROOT_PASSWORD -e "$1"
+		}
+		function slave_execsql() {
+			mysql -P $SLAVE_PORT -h $SLAVE_HOST -u root -p$MYSQL_ROOT_PASSWORD -e "$1"
+		}
 
-    for i in {30..0}; do
+		for i in {30..0}; do
 			if mysql -u root -p$MYSQL_ROOT_PASSWORD -e 'SELECT 1' &> /dev/null; then
 				break
 			fi
@@ -181,56 +237,81 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 			sleep 1
 		done
 
-    if [ "$i" = 0 ]; then
+		if [ "$i" = 0 ]; then
 			echo >&2 'MySQL startup process failed.'
 			exit 1
 		fi
 
-    # Ensure replication user exists
-    execsql "create user 'replicator'@'%' identified by '$MYSQL_ROOT_PASSWORD';" || echo "replictor user already exists"
-    execsql "grant replication slave on *.* to 'replicator'@'%';"
+		# Ensure replication user exists
+		execsql "create user 'replicator'@'%' identified by '$MYSQL_ROOT_PASSWORD';" || echo "replicator user already exists"
+		execsql "grant replication slave on *.* to 'replicator'@'%';"
 
-    if [ -n "$PEER_HOST" ] && [ -n "$PEER_PORT" ]; then
-      # Create snapshots from self and peer
-      bkup_date=$(date +"%Y-%m-%d-%H-%M-%S")
-      snapshots_dir=$DATADIR/snapshots
-      mkdir -p $snapshots_dir
+		# Wait for master to be up
+		if [ -n "$MASTER_HOST" ] && [ -n "$MASTER_PORT" ]; then
+			for i in {5..0}; do
+				if mysql -P $MASTER_PORT -h $MASTER_HOST -u root -p$MYSQL_ROOT_PASSWORD -e 'SELECT 1' &> /dev/null; then
+					MASTER_UP=true
+					break
+				fi
+				echo "Master not yet available ($MASTER_HOST:$MASTER_PORT). Waiting..."
+				sleep 1
+			done
+		fi
 
-      echo "Create local snapshot: $snapshots_dir/$bkup_date.self.dump"
-      mysqldump -u root -p$MYSQL_ROOT_PASSWORD --databases $MYSQL_DATABASE > $snapshots_dir/$bkup_date.self.dump
+		if [ -n "$MASTER_HOST" ] && [ -n "$MASTER_PORT" ] && [ "$MASTER_UP" == "true" ]; then
+			# Create snapshots from self and master
+			bkup_date=$(date +"%Y-%m-%d-%H-%M-%S")
+			snapshots_dir=$DATADIR/snapshots
+			mkdir -p $snapshots_dir
 
-      echo "Create peer snapshot: $snapshots_dir/$bkup_date.peer.dump"
-      mysqldump --master-data -P $PEER_PORT -h $PEER_HOST -u root -p$MYSQL_ROOT_PASSWORD --databases $MYSQL_DATABASE > $snapshots_dir/$bkup_date.peer.dump
+			echo "Create local snapshot: $snapshots_dir/$bkup_date.self.dump"
+			mysqldump -u root -p$MYSQL_ROOT_PASSWORD --databases $MYSQL_DATABASE > $snapshots_dir/$bkup_date.self.dump
 
-      # Configure replication for self and perform initial import
-      echo "Stop slave and update master configuration on local instance"
-      execsql "STOP SLAVE;"
-      execsql "CHANGE MASTER TO MASTER_HOST = '$PEER_HOST', MASTER_PORT = $PEER_PORT, MASTER_USER = 'replicator', MASTER_PASSWORD = '$MYSQL_ROOT_PASSWORD';"
+			echo "Create master snapshot: $snapshots_dir/$bkup_date.master.dump"
+			mysqldump --master-data -P $MASTER_PORT -h $MASTER_HOST -u root -p$MYSQL_ROOT_PASSWORD --databases $MYSQL_DATABASE > $snapshots_dir/$bkup_date.master.dump
 
-      echo "Import dump from peer and restart slave thread"
-      mysql -u root -p$MYSQL_ROOT_PASSWORD < $snapshots_dir/$bkup_date.peer.dump
-      execsql "START SLAVE;"
+			# Configure replication for self and perform initial import
+			echo "Stop slave and update master configuration on local instance"
+			execsql "STOP SLAVE;"
+			execsql "CHANGE MASTER TO MASTER_HOST = '$MASTER_HOST', MASTER_PORT = $MASTER_PORT, MASTER_USER = 'replicator', MASTER_PASSWORD = '$MYSQL_ROOT_PASSWORD';"
 
-      # Configure replication for peer remotely
-      echo "Stop slave on remote peer"
-      peer_execsql "STOP SLAVE;"
-      if [ -n "$SELF_HOST" ] && [ -n "$SELF_PORT" ] && [ "$MASTER_MASTER_REP" == "true" ]; then
-        echo "Update Master configuration on remote peer and restart slave"
-        read CURRENT_LOG CURRENT_POS REP_DO_DBS < <(mysql -u root -p$MYSQL_ROOT_PASSWORD -BNe "SHOW MASTER STATUS;")
-        peer_execsql "CHANGE MASTER TO MASTER_HOST = '$SELF_HOST', MASTER_PORT = $SELF_PORT, MASTER_USER = 'replicator', MASTER_PASSWORD = '$MYSQL_ROOT_PASSWORD', MASTER_LOG_FILE = '$CURRENT_LOG', MASTER_LOG_POS = $CURRENT_POS;"
-        peer_execsql "START SLAVE;"
-      fi
-    fi
+			echo "Import dump from master and restart local slave thread"
+			mysql -u root -p$MYSQL_ROOT_PASSWORD < $snapshots_dir/$bkup_date.master.dump
+			execsql "START SLAVE;"
+		fi
 
-    if ! kill -s TERM "$pid" || ! wait "$pid"; then
-      echo >&2 'MySQL replication process failed.'
-      exit 1
-    fi
+		# Wait for slave to be up
+		if [ -n "$SLAVE_HOST" ] && [ -n "$SLAVE_PORT" ] && [ -n "$SELF_HOST" ] && [ -n "$SELF_PORT" ]; then
+			for i in {5..0}; do
+				if mysql -P $SLAVE_PORT -h $SLAVE_HOST -u root -p$MYSQL_ROOT_PASSWORD -e 'SELECT 1' &> /dev/null; then
+					SLAVE_UP=true
+					break
+				fi
+				echo "Slave not yet available ($SLAVE_HOST:$SLAVE_PORT). Waiting..."
+				sleep 1
+			done
+		fi
 
-    echo
-    echo 'MySQL replication setup done. Ready for start up.'
-    echo
-  fi
+		if [ -n "$SLAVE_HOST" ] && [ -n "$SLAVE_PORT" ] && [ -n "$SELF_HOST" ] && [ -n "$SELF_PORT" ] && [ "$SLAVE_UP" == "true" ]; then
+			# Configure replication for remote slave
+			echo "Stop slave thread on remote slave"
+			slave_execsql "STOP SLAVE;"
+
+			echo "Update Master configuration on remote slave and restart slave thread"
+			read CURRENT_LOG CURRENT_POS REP_DO_DBS < <(mysql -u root -p$MYSQL_ROOT_PASSWORD -BNe "SHOW MASTER STATUS;")
+			slave_execsql "CHANGE MASTER TO MASTER_HOST = '$SELF_HOST', MASTER_PORT = $SELF_PORT, MASTER_USER = 'replicator', MASTER_PASSWORD = '$MYSQL_ROOT_PASSWORD', MASTER_LOG_FILE = '$CURRENT_LOG', MASTER_LOG_POS = $CURRENT_POS;"
+			slave_execsql "START SLAVE;"
+		fi
+
+		if ! kill -s TERM "$pid" || ! wait "$pid"; then
+			echo >&2 'MySQL replication process failed.'
+			exit 1
+		fi
+
+		echo
+		echo 'MySQL replication setup done. Ready for start up.'
+		echo
+	fi
 fi
 
 exec "$@"

@@ -248,7 +248,7 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 
 		# Wait for master to be up
 		if [ -n "$MASTER_HOST" ] && [ -n "$MASTER_PORT" ]; then
-			for i in {5..0}; do
+			for i in {30..0}; do
 				if mysql -P $MASTER_PORT -h $MASTER_HOST -u root -p$MYSQL_ROOT_PASSWORD -e 'SELECT 1' &> /dev/null; then
 					MASTER_UP=true
 					break
@@ -282,7 +282,7 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 
 		# Wait for slave to be up
 		if [ -n "$SLAVE_HOST" ] && [ -n "$SLAVE_PORT" ] && [ -n "$SELF_HOST" ] && [ -n "$SELF_PORT" ]; then
-			for i in {5..0}; do
+			for i in {30..0}; do
 				if mysql -P $SLAVE_PORT -h $SLAVE_HOST -u root -p$MYSQL_ROOT_PASSWORD -e 'SELECT 1' &> /dev/null; then
 					SLAVE_UP=true
 					break

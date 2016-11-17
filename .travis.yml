@@ -43,7 +43,7 @@ script:
   - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "show tables in app_db;"
   - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))"
   - "record_count=$(mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - '[ "$record_count" == "1" ]
+  - '[ "$record_count" == "1" ]'
 
   # Destroy container
   - docker rm -f m0
@@ -74,7 +74,7 @@ script:
   - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "show tables in app_db;"
   - mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES(RAND(1000))"
   - "record_count=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - '[ "$record_count" == "1" ]
+  - '[ "$record_count" == "1" ]'
 
   # Create replica 2 and insert data on master in parallel
   - docker run -d -p $PORT_NODE_2:3306 -v $VOL_NODE_2:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_2 -e MYSQL_REP_PEERS=$HOST_PUB_IP:$PORT_NODE_1:1,$HOST_PUB_IP:$PORT_NODE_2:2 --name m2 maestrano/mysql:travis
@@ -87,7 +87,7 @@ script:
   # Ensure counts are equal
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - '[ "$count_node_1" == "$count_node_2" ]
+  - '[ "$count_node_1" == "$count_node_2" ]'
   - last_count=$count_node_1
 
   # Create replica 3 and insert data on master in parallel
@@ -102,8 +102,8 @@ script:
   - "count_node_1=$(mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_2=$(mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - "count_node_3=$(mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
-  - '[ "$count_node_1" == "$count_node_2" ]
-  - '[ "$count_node_1" == "$count_node_3" ]
+  - '[ "$count_node_1" == "$count_node_2" ]'
+  - '[ "$count_node_1" == "$count_node_3" ]'
   - last_count=$count_node_1
 
   # Give some time to the circular replication to settle

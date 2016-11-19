@@ -1,4 +1,7 @@
-# docker-mysql
+# Maestrano MySQL
+Docker image for MySQL with support for circular replication.
+
+[![Build Status](https://travis-ci.org/maestrano/docker-mysql.svg?branch=master)](https://travis-ci.org/maestrano/docker-mysql)
 
 **Example on local machine:**
 ```sh

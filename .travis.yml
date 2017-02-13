@@ -46,11 +46,11 @@ script:
   - for i in {30..0}; do docker exec -it m0 /usr/local/bin/backup.sh; sleep 1; done
 
   # Check that only 20 backups are kept
-  - "bkup_count=$(docker exec -it m0 ls -l /var/lib/mysql/backups | grep sql.gz | wc -l)"
+  - "bkup_count=$(docker exec -it m0 ls -l /snapshots | grep sql.gz | wc -l)"
   - '[ "$bkup_count" == "20" ]'
 
   # Perform recovery and check integrity
-  - docker exec -it m0 bash -c "gunzip --stdout /var/lib/mysql/backups/\$(ls -1r /var/lib/mysql/backups/ | head -n 1) | mysql -u root -proot"
+  - docker exec -it m0 bash -c "gunzip --stdout /snapshots/\$(ls -1r /snapshots/ | head -n 1) | mysql -u root -proot"
   - "record_count=$(mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - '[ "$record_count" == "1" ]'
 
@@ -70,7 +70,6 @@ script:
   #============================================================================
   # Test MySQL cluster: Master-Master setup
   #============================================================================
-  # TODO: mount volumes
   # Start cluster instance 1
   - docker run -d -p $PORT_NODE_1:3306 -v $VOL_NODE_1:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=app_db -e SELF_HOST=$HOST_PUB_IP -e SELF_PORT=$PORT_NODE_1 -e MYSQL_REP_PEERS=$HOST_PUB_IP:$PORT_NODE_1:1 --name m1 maestrano/mysql:travis
 

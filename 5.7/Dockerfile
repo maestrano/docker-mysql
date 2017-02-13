@@ -1,6 +1,6 @@
 FROM mysql:5.7
 
-VOLUME /var/lib/mysql
+VOLUME ["/var/lib/mysql","/snapshots"]
 
 # Point-in-time backup script with backup rotation
 COPY backup.sh /usr/local/bin/

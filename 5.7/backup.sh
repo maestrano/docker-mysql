@@ -14,7 +14,7 @@ mkdir -p $BKUP_DIR
 
 # Perform backup
 ts=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
-mysqldump -u root -p$MYSQL_ROOT_PASSWORD --single-transaction --routines --triggers --all-databases > /dev/null 2>&1 | gzip > /tmp/$ts.sql.gz
+mysqldump -u root -p$MYSQL_ROOT_PASSWORD --single-transaction --routines --triggers --all-databases | gzip > /tmp/$ts.sql.gz
 mv /tmp/$ts.sql.gz $BKUP_DIR/
 
 # Keep limited number of backups

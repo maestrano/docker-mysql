@@ -1,8 +1,8 @@
 FROM mysql:5.7
 
-VOLUME ["/var/lib/mysql","/snapshots"]
+VOLUME ["/var/lib/mysql", "/snapshots"]
 
-# Set default charset to UTF8
+# Set default charset to UTF-8
 COPY mysqld_charset.cnf /etc/mysql/conf.d/mysqld_charset.cnf
 
 # Point-in-time backup script with backup rotation

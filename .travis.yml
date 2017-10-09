@@ -42,6 +42,12 @@ script:
   - "record_count=$(mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy')"
   - '[ "$record_count" == "1" ]'
 
+  # UTF-8 support
+  - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "insert into app_db.dummy VALUES('£™Τὴಬಾè')"
+  - "record_count=$(mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -BNe \"SELECT COUNT(*) FROM app_db.dummy WHERE id = \'£™Τὴಬಾè'\")"
+  - '[ "$record_count" == "1" ]'
+  - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "delete from app_db.dummy WHERE id = '£™Τὴಬಾè'"
+
   # Perform successive backups
   - for i in {30..0}; do docker exec -it m0 /usr/local/bin/backup.sh; sleep 1; done
 

@@ -48,6 +48,11 @@ script:
   - '[ "$record_count" == "1" ]'
   - mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -e "delete from app_db.dummy WHERE id = '£™Τὴಬಾè'"
 
+  # TLS support
+  # Run command in container to ensure mysql-client is v5.7+
+  - "tls_conn_count=$(docker run maestrano/mysql:travis mysql -P $PORT_NODE_0 -h $HOST_PUB_IP -u root -proot -BNe \"SELECT COUNT(*) FROM performance_schema.threads WHERE connection_type = 'SSL/TLS' GROUP BY connection_type\")"
+  - '[ "$tls_conn_count" == "1" ]'
+
   # Perform successive backups
   - for i in {30..0}; do docker exec -it m0 /usr/local/bin/backup.sh; sleep 1; done
 
@@ -142,6 +147,21 @@ script:
   - "count_node_3=$(mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -BNe 'SELECT COUNT(*) FROM app_db.dummy_original')"
   - '[ $count_node_1 -eq $count_node_2 ]'
   - '[ $count_node_1 -eq $count_node_3 ]'
+
+  # TLS support - node 1
+  # Run command in container to ensure mysql-client is v5.7+
+  - "tls_conn_count=$(docker run maestrano/mysql:travis mysql -P $PORT_NODE_1 -h $HOST_PUB_IP -u root -proot -BNe \"SELECT COUNT(*) FROM performance_schema.threads WHERE connection_type = 'SSL/TLS' GROUP BY connection_type\")"
+  - '[ "$tls_conn_count" == "1" ]'
+
+  # TLS support - node 2
+  # Run command in container to ensure mysql-client is v5.7+
+  - "tls_conn_count=$(docker run maestrano/mysql:travis mysql -P $PORT_NODE_2 -h $HOST_PUB_IP -u root -proot -BNe \"SELECT COUNT(*) FROM performance_schema.threads WHERE connection_type = 'SSL/TLS' GROUP BY connection_type\")"
+  - '[ "$tls_conn_count" == "1" ]'
+
+  # TLS support - node 3
+  # Run command in container to ensure mysql-client is v5.7+
+  - "tls_conn_count=$(docker run maestrano/mysql:travis mysql -P $PORT_NODE_3 -h $HOST_PUB_IP -u root -proot -BNe \"SELECT COUNT(*) FROM performance_schema.threads WHERE connection_type = 'SSL/TLS' GROUP BY connection_type\")"
+  - '[ "$tls_conn_count" == "1" ]'
 
   #============================================================================
   # Test MySQL cluster: Stop/Start second replica

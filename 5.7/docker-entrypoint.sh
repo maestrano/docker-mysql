@@ -149,6 +149,15 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 		echo
 	fi
 
+  # Ensure TLS certificates have been generated
+  # The tool does nothing if certificates have been generated
+  # already
+  echo "Ensuring TLS certificates are setup"
+  export PATH=$PATH:/usr/bin/openssl
+  ls -al /usr/bin/
+  echo $(which openssl)
+  mysql_ssl_rsa_setup --datadir=$DATADIR || true
+
 	#
 	# MySQL peer selection
 	#

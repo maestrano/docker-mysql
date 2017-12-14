@@ -1,5 +1,10 @@
 FROM mysql:5.7
 
+# Ensure openssl is installed
+RUN apt-get update \
+  && apt-get install -y openssl \
+  && rm -rf /var/lib/apt/lists/*
+
 VOLUME ["/var/lib/mysql", "/snapshots"]
 
 # Set default charset to UTF-8

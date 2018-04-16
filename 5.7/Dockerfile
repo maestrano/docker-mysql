@@ -5,6 +5,9 @@ VOLUME ["/var/lib/mysql", "/snapshots"]
 # Set default charset to UTF-8
 COPY mysqld_charset.cnf /etc/mysql/conf.d/mysqld_charset.cnf
 
+# Set default max_connections to 1024
+COPY mysqld_max_connections.cnf /etc/mysql/conf.d/mysqld_max_connections.cnf
+
 # Point-in-time backup script with backup rotation
 COPY backup.sh /usr/local/bin/
 
